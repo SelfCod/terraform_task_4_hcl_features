@@ -1,102 +1,62 @@
-resource "azurerm_virtual_network" "main" {
-  name                = "${var.prefix}-network"
-  address_space       = var.address_space
-  location            = var.location
-  resource_group_name = data.azurerm_resource_group.example.name
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.105.0"
+    }
+  }
 }
 
-resource "azurerm_subnet" "internal" {
-  name                 = var.subnet_name
-  resource_group_name  = data.azurerm_resource_group.example.name
-  virtual_network_name = azurerm_virtual_network.main.name
-  address_prefixes     = var.subnet_prefixes
+provider "azurerm" {
+  features {}
 }
-
-data "azurerm_resource_group" "example" {
-  name = var.resource_group_name
-}
-
-output "vnet_name" {
-  value = azurerm_virtual_network.main.name
-}
-
-output "subnet_name" {
-  value = azurerm_subnet.internal.name
-}
-
-
-# modules/network/variables.tf
 
 variable "prefix" {
-  type        = string
-  description = "Prefix for network resources"
+  type    = string
+  default = "tfvmex"
+  description = "Prefix for all resource names"
 }
 
 variable "location" {
-  type        = string
-  description = "Azure region"
+  type    = string
+  default = "West Europe"
+  description = "Azure region to deploy resources"
+}
+
+variable "vm_count" {
+  type    = number
+  default = 2
+  description = "Number of virtual machines to create"
 }
 
 variable "address_space" {
   type        = list(string)
+  default     = ["10.0.0.0/16"]
   description = "Address space for the virtual network"
 }
 
 variable "subnet_prefixes" {
   type        = list(string)
+  default     = ["10.0.2.0/24"]
   description = "Address prefixes for the subnet"
 }
 
 variable "subnet_name" {
   type        = string
+  default     = "internal"
   description = "Name of the subnet"
 }
 
 variable "resource_group_name" {
   type        = string
+  default     = "tfvmex-resources"
   description = "Name of the resource group"
 }
 
-
-# modules/security_group/main.tf
-
-resource "azurerm_network_security_group" "main" {
-  name                = "${var.prefix}-nsg"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-
-  dynamic "security_rule" {
-    for_each = var.security_rules_list
-    content {
-      name                       = security_rule.value.name
-      priority                   = security_rule.value.priority
-      direction                  = security_rule.value.direction
-      access                     = security_rule.value.access
-      protocol                   = security_rule.value.protocol
-      source_port_range          = security_rule.value.source_port_range
-      destination_port_range     = security_rule.value.destination_port_range
-      source_address_prefix      = lookup(security_rule.value, "source_address_prefix", "*")
-      destination_address_prefix = lookup(security_rule.value, "destination_address_prefix", "*")
-    }
-  }
-}
-
-
-# modules/security_group/variables.tf
-
-variable "prefix" {
-  type        = string
-  description = "Prefix for security group resources"
-}
-
-variable "location" {
-  type        = string
-  description = "Azure region"
-}
-
-variable "resource_group_name" {
-  type        = string
-  description = "Name of the resource group"
+variable "nic_names" {
+  type        = list(string)
+  default     = ["nic-web-01", "nic-web-02", "nic-db-01"]
+  description = "List of network interface names"
 }
 
 variable "security_rules_list" {
@@ -108,33 +68,91 @@ variable "security_rules_list" {
     protocol                   = string
     source_port_range          = string
     destination_port_range     = string
-    source_address_prefix      = optional(string)
-    destination_address_prefix = optional(string)
+    source_address_prefix      = optional(string, "*")
+    destination_address_prefix = optional(string, "*")
   }))
-  description = "List of security rules"
+  default = [
+    {
+      name                    = "AllowSSH"
+      priority                = 100
+      direction               = "Inbound"
+      access                  = "Allow"
+      protocol                = "Tcp"
+      source_port_range       = "*"
+      destination_port_range  = "22"
+    },
+    {
+      name                    = "AllowHTTP"
+      priority                = 110
+      direction               = "Inbound"
+      access                  = "Allow"
+      protocol                = "Tcp"
+      source_port_range       = "*"
+      destination_port_range  = "80"
+    },
+  ]
+  description = "List of security rules for Network Security Group"
 }
 
-# modules/virtual_machines/main.tf
+resource "azurerm_resource_group" "example" {
+  name     = var.resource_group_name
+  location = var.location
+}
+
+resource "azurerm_virtual_network" "main" {
+  name                = "${var.prefix}-network"
+  address_space       = var.address_space
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+}
+
+resource "azurerm_subnet" "internal" {
+  name                 = var.subnet_name
+  resource_group_name  = azurerm_resource_group.example.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = var.subnet_prefixes
+}
 
 resource "azurerm_network_interface" "nic" {
-  for_each            = toset(var.nic_names)
+  for_each = { for index, name in var.nic_names : index => name }
   name                = each.value
-  location            = var.location
-  resource_group_name = var.resource_group_name
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
 
   ip_configuration {
     name                          = "primary"
-    subnet_id                     = data.azurerm_subnet.internal.id
+    subnet_id                     = azurerm_subnet.internal.id
     private_ip_address_allocation = "Dynamic"
+  }
+}
+
+resource "azurerm_network_security_group" "example" {
+  name                = "${var.prefix}-nsg"
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+
+  dynamic "security_rule" {
+    for_each = var.security_rules_list
+    content {
+      name                        = security_rule.value.name
+      priority                    = security_rule.value.priority
+      direction                   = security_rule.value.direction
+      access                      = security_rule.value.access
+      protocol                    = security_rule.value.protocol
+      source_port_range           = security_rule.value.source_port_range
+      destination_port_range      = security_rule.value.destination_port_range
+      source_address_prefix       = security_rule.value.source_address_prefix
+      destination_address_prefix  = security_rule.value.destination_address_prefix
+    }
   }
 }
 
 resource "azurerm_virtual_machine" "main" {
   count                 = var.vm_count
   name                  = "${var.prefix}-vm-${count.index + 1}"
-  location              = var.location
-  resource_group_name   = var.resource_group_name
-  network_interface_ids = [azurerm_network_interface.nic[element(keys(azurerm_network_interface.nic), count.index)].id]
+  location              = azurerm_resource_group.example.location
+  resource_group_name   = azurerm_resource_group.example.name
+  network_interface_ids = [azurerm_network_interface.nic[index(var.nic_names, split("-", name)[2]) - 1].id]
   vm_size               = "Standard_DS1_v2"
 
   lifecycle {
@@ -166,67 +184,14 @@ resource "azurerm_virtual_machine" "main" {
   }
 }
 
-data "azurerm_subnet" "internal" {
-  name                 = var.subnet_name
-  virtual_network_name = var.vnet_name
-  resource_group_name  = var.resource_group_name
+output "vm_name_uppercase" {
+  value = upper(azurerm_virtual_machine.main[0].name)
 }
 
-output "vm_names" {
-  value = [for vm in azurerm_virtual_machine.main : vm.name]
+output "joined_tags" {
+  value = join(",", ["environment:staging", "owner:terraform"])
 }
 
 output "vm_ids" {
   value = [for vm in azurerm_virtual_machine.main : vm.id]
-}
-
-
-# modules/virtual_machines/variables.tf
-
-variable "prefix" {
-  type        = string
-  description = "Prefix for VM resources"
-}
-
-variable "location" {
-  type        = string
-  description = "Azure region"
-}
-
-variable "resource_group_name" {
-  type        = string
-  description = "Name of the resource group"
-}
-
-variable "vnet_name" {
-  type        = string
-  description = "Name of the virtual network"
-}
-
-variable "subnet_name" {
-  type        = string
-  description = "Name of the subnet"
-}
-
-variable "nic_names" {
-  type        = list(string)
-  description = "List of network interface names"
-}
-
-variable "vm_count" {
-  type        = number
-  description = "Number of virtual machines to create"
-}
-
-
-output "vm_name_uppercase" {
-  value = upper(module.virtual_machines.vm_names[0])
-}
-
-output "joined_tags" {
-  value = join(",", local.tags_list)
-}
-
-output "vm_ids" {
-  value = module.virtual_machines.vm_ids
 }
