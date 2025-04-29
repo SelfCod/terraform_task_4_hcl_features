@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     azurerm = {
-      source = "hashicorp/azurerm"
+      source  = "hashicorp/azurerm"
       version = "3.105.0"
     }
   }
@@ -12,20 +12,20 @@ provider "azurerm" {
 }
 
 variable "prefix" {
-  type    = string
-  default = "tfvmex"
+  type        = string
+  default     = "tfvmex"
   description = "Prefix for all resource names"
 }
 
 variable "location" {
-  type    = string
-  default = "West Europe"
+  type        = string
+  default     = "West Europe"
   description = "Azure region to deploy resources"
 }
 
 variable "vm_count" {
-  type    = number
-  default = 2
+  type        = number
+  default     = 2
   description = "Number of virtual machines to create"
 }
 
@@ -73,22 +73,22 @@ variable "security_rules_list" {
   }))
   default = [
     {
-      name                    = "AllowSSH"
-      priority                = 100
-      direction               = "Inbound"
-      access                  = "Allow"
-      protocol                = "Tcp"
-      source_port_range       = "*"
-      destination_port_range  = "22"
+      name                   = "AllowSSH"
+      priority               = 100
+      direction              = "Inbound"
+      access                 = "Allow"
+      protocol               = "Tcp"
+      source_port_range      = "*"
+      destination_port_range = "22"
     },
     {
-      name                    = "AllowHTTP"
-      priority                = 110
-      direction               = "Inbound"
-      access                  = "Allow"
-      protocol                = "Tcp"
-      source_port_range       = "*"
-      destination_port_range  = "80"
+      name                   = "AllowHTTP"
+      priority               = 110
+      direction              = "Inbound"
+      access                 = "Allow"
+      protocol               = "Tcp"
+      source_port_range      = "*"
+      destination_port_range = "80"
     },
   ]
   description = "List of security rules for Network Security Group"
@@ -114,7 +114,7 @@ resource "azurerm_subnet" "internal" {
 }
 
 resource "azurerm_network_interface" "nic" {
-  for_each = { for index, name in var.nic_names : index => name }
+  for_each            = { for index, name in var.nic_names : index => name }
   name                = each.value
   location            = azurerm_resource_group.example.location
   resource_group_name = azurerm_resource_group.example.name
@@ -134,15 +134,15 @@ resource "azurerm_network_security_group" "example" {
   dynamic "security_rule" {
     for_each = var.security_rules_list
     content {
-      name                        = security_rule.value.name
-      priority                    = security_rule.value.priority
-      direction                   = security_rule.value.direction
-      access                      = security_rule.value.access
-      protocol                    = security_rule.value.protocol
-      source_port_range           = security_rule.value.source_port_range
-      destination_port_range      = security_rule.value.destination_port_range
-      source_address_prefix       = security_rule.value.source_address_prefix
-      destination_address_prefix  = security_rule.value.destination_address_prefix
+      name                       = security_rule.value.name
+      priority                   = security_rule.value.priority
+      direction                  = security_rule.value.direction
+      access                     = security_rule.value.access
+      protocol                   = security_rule.value.protocol
+      source_port_range          = security_rule.value.source_port_range
+      destination_port_range     = security_rule.value.destination_port_range
+      source_address_prefix      = security_rule.value.source_address_prefix
+      destination_address_prefix = security_rule.value.destination_address_prefix
     }
   }
 }
