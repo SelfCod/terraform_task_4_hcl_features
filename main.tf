@@ -119,9 +119,9 @@ resource "azurerm_network_security_group" "example" {
 resource "azurerm_virtual_machine" "main" {
   count                 = var.vm_count
   name                  = "${var.prefix}-vm-${count.index + 1}"
-  location              = azurerm_resource_group.example.location
-  resource_group_name   = azurerm_resource_group.example.name
-  network_interface_ids = [azurerm_network_interface.nic[index(var.nic_names, split("-", name)[2]) - 1].id]
+  location              = var.location
+  resource_group_name   = var.resource_group_name
+  network_interface_ids = [azurerm_network_interface.nic[element(var.nic_names, count.index)].id]
   vm_size               = "Standard_DS1_v2"
 
   lifecycle {
