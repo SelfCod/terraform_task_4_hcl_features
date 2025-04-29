@@ -217,3 +217,16 @@ variable "vm_count" {
   type        = number
   description = "Number of virtual machines to create"
 }
+
+
+output "vm_name_uppercase" {
+  value = upper(module.virtual_machines.vm_names[0])
+}
+
+output "joined_tags" {
+  value = join(",", local.tags_list)
+}
+
+output "vm_ids" {
+  value = module.virtual_machines.vm_ids
+}
